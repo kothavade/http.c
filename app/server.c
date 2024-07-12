@@ -49,12 +49,12 @@ int main() {
     printf("Waiting for a client to connect...\n");
     client_addr_len = sizeof(client_addr);
 
-    accept(server_fd, (struct sockaddr *)&client_addr, (socklen_t *)&client_addr_len);
+    int client_fd = accept(server_fd, (struct sockaddr *)&client_addr, (socklen_t *)&client_addr_len);
     printf("Client connected\n");
 
     const char *http_response = "HTTP/1.1 200 OK\r\n\r\n";
 
-    write(server_fd, http_response, strlen(http_response));
+    write(client_fd, http_response, strlen(http_response));
 
     close(server_fd);
 
