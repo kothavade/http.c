@@ -49,12 +49,33 @@ int main() {
     printf("Waiting for a client to connect...\n");
     client_addr_len = sizeof(client_addr);
 
-    int client_fd = accept(server_fd, (struct sockaddr *)&client_addr, (socklen_t *)&client_addr_len);
+    int client_fd =
+        accept(server_fd, (struct sockaddr *)&client_addr, (socklen_t *)&client_addr_len);
     printf("Client connected\n");
 
-    const char *http_response = "HTTP/1.1 200 OK\r\n\r\n";
+    char req[1024];
+    read(client_fd, req, 1024);
 
-    write(client_fd, http_response, strlen(http_response));
+    char *line, *llast;
+    line = strtok_r(req, "\r\n", &llast);
+
+    // Request
+    char *method, *target, *version, *reqlast;
+    method = strtok_r(line, " ", &reqlast);
+    target = strtok_r(NULL, " ", &reqlast);
+    version = strtok_r(NULL, " ", &reqlast);
+    // printf("METHOD: %s\n", method);
+    // printf("TARGET: %s\n", target);
+    // printf("VERSION: %s\n", version);
+
+    const char *OK = "HTTP/1.1 200 OK\r\n\r\n";
+    const char *NOT_FOUND = "HTTP/1.1 404 Not Found\r\n\r\n";
+
+    if (strcmp(target, "/") == 0) {
+        write(client_fd, OK, strlen(OK));
+    } else {
+        write(client_fd, NOT_FOUND, strlen(NOT_FOUND));
+    }
 
     close(server_fd);
 
