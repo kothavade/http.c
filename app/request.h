@@ -14,7 +14,7 @@ typedef struct {
     char* body;
 } Request;
 
-void freeRequest(Request *req);
-Header* getHeader(Request* req, char* name);
-void addHeader(Request* req, char* name, char* body);
-void setHeader(Request* req, char* name, char* body);
+void free_request(Request *req);
+Header* get_header(Request* req, char* name);
+void add_header(Request* req, char* name, char* body);
+void set_header(Request* req, char* name, char* body);

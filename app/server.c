@@ -12,6 +12,7 @@
 
 #include "request.h"
 
+#define MAX_PATH_SIZE 1024
 #define MAX_INPUT_SIZE 1024
 
 #define HTTP_OK "HTTP/1.1 200 OK\r\n"
@@ -27,13 +28,13 @@ const char FILE_TARGET[] = "/files/";
 
 const char DIR_ARG[] = "--directory";
 
-void *handleClient(void *arg);
+void *handle_client(void *arg);
 void ok(Request *req);
 void echo(Request *req);
-void userAgent(Request *req);
-void fileGet(Request *req, char *path);
-void filePost(Request *req, char *path);
-void notFound(Request *req);
+void user_agent(Request *req);
+void file_get(Request *req, char *path);
+void file_post(Request *req, char *path);
+void not_found(Request *req);
 
 char *dir = "./";
 
@@ -89,7 +90,7 @@ int main(int argc, char **argv) {
         int *thread_fd = malloc(sizeof(int));
         *thread_fd = client_fd;
 
-        pthread_create(&thread, NULL, handleClient, thread_fd);
+        pthread_create(&thread, NULL, handle_client, thread_fd);
     }
 
     close(server_fd);
@@ -97,7 +98,7 @@ int main(int argc, char **argv) {
     return 0;
 }
 
-void *handleClient(void *arg) {
+void *handle_client(void *arg) {
     int client_fd = *((int *)arg);
     free(arg);
 
@@ -129,7 +130,7 @@ void *handleClient(void *arg) {
         header_name = strsep(&section, ": ");
         // FIXME: why do we have to skip the space ourselves?
         header_body = ++section;
-        setHeader(&req, header_name, header_body);
+        set_header(&req, header_name, header_body);
         section = strtok_r(NULL, "\r\n", &last);
     }
 
@@ -138,25 +139,25 @@ void *handleClient(void *arg) {
     } else if (strncmp(ECHO_TARGET, req.target, strlen(ECHO_TARGET)) == 0) {
         echo(&req);
     } else if (strncmp(USER_TARGET, req.target, strlen(USER_TARGET)) == 0) {
-        userAgent(&req);
+        user_agent(&req);
     } else if (strncmp(FILE_TARGET, req.target, strlen(FILE_TARGET)) == 0) {
         const char *input = req.target + strlen(FILE_TARGET);
-        char path[1024];
+        char path[MAX_PATH_SIZE];
         strcpy(path, dir);
         strcpy(path + strlen(dir), input);
         if (strcmp(req.method, "GET") == 0) {
-            fileGet(&req, path);
+            file_get(&req, path);
         } else if (strcmp(req.method, "POST") == 0) {
-            filePost(&req, path);
+            file_post(&req, path);
         } else {
-            notFound(&req);
+            not_found(&req);
         }
 
     } else {
-        notFound(&req);
+        not_found(&req);
     }
 
-    freeRequest(&req);
+    free_request(&req);
     close(client_fd);
     return NULL;
 }
@@ -178,9 +179,9 @@ void echo(Request *req) {
     free(echo);
 }
 
-void userAgent(Request *req) {
+void user_agent(Request *req) {
     const char USER_PREFIX[] = HTTP_OK CONTENT_PLAIN "Content-Length: ";
-    Header *h = getHeader(req, "User-Agent");
+    Header *h = get_header(req, "User-Agent");
     char *body = h->body;
     int body_len = strlen(body);
 
@@ -191,12 +192,12 @@ void userAgent(Request *req) {
     free(user_agent);
 }
 
-void fileGet(Request *req, char* path) {
+void file_get(Request *req, char* path) {
     const char FILE_PREFIX[] = HTTP_OK CONTENT_OCTET "Content-Length: ";
 
     FILE *fp = fopen(path, "r");
     if (fp == NULL) {
-        notFound(req);
+        not_found(req);
         return;
     }
 
@@ -216,7 +217,7 @@ void fileGet(Request *req, char* path) {
     free(get_file);
 }
 
-void filePost(Request *req, char *path) {
+void file_post(Request *req, char *path) {
     const char FILE_RESP[] = HTTP_CREATED "\r\n";
     FILE *fp = fopen(path, "w");
     fprintf(fp, "%s", req->body);
@@ -225,7 +226,7 @@ void filePost(Request *req, char *path) {
     write(req->client_fd, FILE_RESP, strlen(FILE_RESP));
 }
 
-void notFound(Request *req) {
+void not_found(Request *req) {
     const char NOT_FOUND[] = HTTP_NOT_FOUND "\r\n";
     write(req->client_fd, NOT_FOUND, strlen(NOT_FOUND));
 }

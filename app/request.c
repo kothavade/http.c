@@ -4,7 +4,7 @@
 #include <string.h>
 
 /// Get a header by name from a request if one exists, otherwise, return `NULL`.
-Header* getHeader(Request* req, char* name) {
+Header* get_header(Request* req, char* name) {
     Header* h = req->headers;
     while (h != NULL) {
         if (strcmp(h->name, name) == 0) {
@@ -19,7 +19,7 @@ Header* getHeader(Request* req, char* name) {
 ///
 /// Only do this when sure that an existing header of this name is not set,
 /// otherwise, could create duplicates. See the safer `setHeader`.
-void addHeader(Request* req, char* name, char* body) {
+void add_header(Request* req, char* name, char* body) {
     Header* new = malloc(sizeof(Header));
     new->name = name;
     new->body = body;
@@ -37,18 +37,18 @@ void addHeader(Request* req, char* name, char* body) {
 }
 
 /// Set an existing header if one exists, otherwise add one.
-void setHeader(Request* req, char* name, char* body) {
-    Header* h = getHeader(req, name);
+void set_header(Request* req, char* name, char* body) {
+    Header* h = get_header(req, name);
     if (h != NULL) {
         h->name = name;
         h->body = body;
     } else {
-        addHeader(req, name, body);
+        add_header(req, name, body);
     }
 }
 
 /// Free all allocated fields in a Request.
-void freeRequest(Request* req) {
+void free_request(Request* req) {
     Header* h = req->headers;
     while (h != NULL) {
         Header* temp = h;
