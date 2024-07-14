@@ -2,7 +2,7 @@
 typedef struct header {
     char* name;
     char* body;
-    struct header* next;
+    struct header* _next;
 } Header;
 
 typedef struct {

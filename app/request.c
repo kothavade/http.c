@@ -1,4 +1,5 @@
 #include "request.h"
+
 #include <stdlib.h>
 #include <string.h>
 
@@ -9,7 +10,7 @@ Header* getHeader(Request* req, char* name) {
         if (strcmp(h->name, name) == 0) {
             return h;
         }
-        h = h->next;
+        h = h->_next;
     }
     return NULL;
 }
@@ -22,16 +23,16 @@ void addHeader(Request* req, char* name, char* body) {
     Header* new = malloc(sizeof(Header));
     new->name = name;
     new->body = body;
-    new->next = NULL;
+    new->_next = NULL;
 
     if (req->headers == NULL) {
         req->headers = new;
     } else {
         Header* h = req->headers;
-        while (h->next != NULL) {
-            h = h->next;
+        while (h->_next != NULL) {
+            h = h->_next;
         }
-        h->next = new;
+        h->_next = new;
     }
 }
 
@@ -42,16 +43,16 @@ void setHeader(Request* req, char* name, char* body) {
         h->name = name;
         h->body = body;
     } else {
-       addHeader(req, name, body);
+        addHeader(req, name, body);
     }
 }
 
 /// Free all allocated fields in a Request.
-void freeRequest(Request *req) {
-    Header *h = req->headers;
+void freeRequest(Request* req) {
+    Header* h = req->headers;
     while (h != NULL) {
-            Header* temp = h;
-            h = h->next;
-            free(temp);
+        Header* temp = h;
+        h = h->_next;
+        free(temp);
     }
 }
