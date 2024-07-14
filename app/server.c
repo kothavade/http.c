@@ -12,7 +12,14 @@
 
 #include "request.h"
 
+#define MAX_INPUT_SIZE 1024
+
 #define HTTP_OK "HTTP/1.1 200 OK\r\n"
+#define HTTP_CREATED "HTTP/1.1 201 Created\r\n"
+#define HTTP_NOT_FOUND "HTTP/1.1 404 Not Found\r\n"
+
+#define CONTENT_PLAIN "Content-Type: text/plain\r\n"
+#define CONTENT_OCTET "Content-Type: application/octet-stream\r\n"
 
 const char ECHO_TARGET[] = "/echo/";
 const char USER_TARGET[] = "/user-agent";
@@ -24,7 +31,8 @@ void *handleClient(void *arg);
 void ok(Request *req);
 void echo(Request *req);
 void userAgent(Request *req);
-void file(Request *req);
+void fileGet(Request *req, char *path);
+void filePost(Request *req, char *path);
 void notFound(Request *req);
 
 char *dir = "./";
@@ -93,13 +101,16 @@ void *handleClient(void *arg) {
     int client_fd = *((int *)arg);
     free(arg);
 
-    char input[1024];
-    read(client_fd, input, 1024);
+    char input[MAX_INPUT_SIZE];
+    read(client_fd, input, MAX_INPUT_SIZE);
 
     Request req = {.client_fd = client_fd};
 
-    char *section, *last;
+    req.body = strstr(input, "\r\n\r\n");
+    *req.body = '\0';
+    req.body += strlen("\r\n\r\n");
 
+    char *section, *last;
     section = strtok_r(input, "\r\n", &last);
 
     // Request
@@ -129,7 +140,18 @@ void *handleClient(void *arg) {
     } else if (strncmp(USER_TARGET, req.target, strlen(USER_TARGET)) == 0) {
         userAgent(&req);
     } else if (strncmp(FILE_TARGET, req.target, strlen(FILE_TARGET)) == 0) {
-        file(&req);
+        const char *input = req.target + strlen(FILE_TARGET);
+        char path[1024];
+        strcpy(path, dir);
+        strcpy(path + strlen(dir), input);
+        if (strcmp(req.method, "GET") == 0) {
+            fileGet(&req, path);
+        } else if (strcmp(req.method, "POST") == 0) {
+            filePost(&req, path);
+        } else {
+            notFound(&req);
+        }
+
     } else {
         notFound(&req);
     }
@@ -145,9 +167,7 @@ void ok(Request *req) {
 }
 
 void echo(Request *req) {
-    const char ECHO_PREFIX[] = HTTP_OK
-        "Content-Type: text/plain\r\n"
-        "Content-Length: ";
+    const char ECHO_PREFIX[] = HTTP_OK CONTENT_PLAIN "Content-Length: ";
 
     const char *input = req->target + strlen(ECHO_TARGET);
     int input_len = strlen(input);
@@ -159,9 +179,7 @@ void echo(Request *req) {
 }
 
 void userAgent(Request *req) {
-    const char USER_PREFIX[] = HTTP_OK
-        "Content-Type: text/plain\r\n"
-        "Content-Length: ";
+    const char USER_PREFIX[] = HTTP_OK CONTENT_PLAIN "Content-Length: ";
     Header *h = getHeader(req, "User-Agent");
     char *body = h->body;
     int body_len = strlen(body);
@@ -173,15 +191,8 @@ void userAgent(Request *req) {
     free(user_agent);
 }
 
-void file(Request *req) {
-    const char FILE_PREFIX[] = HTTP_OK
-        "Content-Type: application/octet-stream\r\n"
-        "Content-Length: ";
-    const char *input = req->target + strlen(FILE_TARGET);
-    char path[1024];
-
-    strcpy(path, dir);
-    strcpy(path + strlen(dir), input);
+void fileGet(Request *req, char* path) {
+    const char FILE_PREFIX[] = HTTP_OK CONTENT_OCTET "Content-Length: ";
 
     FILE *fp = fopen(path, "r");
     if (fp == NULL) {
@@ -198,13 +209,23 @@ void file(Request *req) {
     sprintf(get_file, "%s%ld\r\n\r\n", FILE_PREFIX, size);
 
     fread(get_file + strlen(get_file), 1, size, fp);
+    fclose(fp);
+
     write(req->client_fd, get_file, strlen(get_file));
 
     free(get_file);
+}
+
+void filePost(Request *req, char *path) {
+    const char FILE_RESP[] = HTTP_CREATED "\r\n";
+    FILE *fp = fopen(path, "w");
+    fprintf(fp, "%s", req->body);
     fclose(fp);
+
+    write(req->client_fd, FILE_RESP, strlen(FILE_RESP));
 }
 
 void notFound(Request *req) {
-    const char NOT_FOUND[] = "HTTP/1.1 404 Not Found\r\n\r\n";
+    const char NOT_FOUND[] = HTTP_NOT_FOUND "\r\n";
     write(req->client_fd, NOT_FOUND, strlen(NOT_FOUND));
 }

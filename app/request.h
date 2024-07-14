@@ -11,6 +11,7 @@ typedef struct {
     char* target;
     char* version;
     Header* headers;
+    char* body;
 } Request;
 
 void freeRequest(Request *req);
