@@ -70,9 +70,30 @@ int main() {
 
     const char *OK = "HTTP/1.1 200 OK\r\n\r\n";
     const char *NOT_FOUND = "HTTP/1.1 404 Not Found\r\n\r\n";
+    const char *ECHO_PREFIX =
+        "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: ";
+
+    const char *echo_target = "/echo/";
 
     if (strcmp(target, "/") == 0) {
         write(client_fd, OK, strlen(OK));
+    } else if (strncmp(echo_target, target, strlen(echo_target)) == 0) {
+        const char *input = target + strlen(echo_target);
+        int input_len = strlen(input);
+        char *echo = malloc(
+            // prefix
+            strlen(ECHO_PREFIX)
+            // input-length length
+            + snprintf(NULL, 0, "%d", input_len)
+            // \r\n\r\n
+            + strlen("\r\n\r\n")
+            // input
+            + strlen(input)
+            // NULL
+            + 1);
+        sprintf(echo, "%s%d\r\n\r\n%s", ECHO_PREFIX, input_len, input);
+        write(client_fd, echo, strlen(echo));
+        free(echo);
     } else {
         write(client_fd, NOT_FOUND, strlen(NOT_FOUND));
     }
