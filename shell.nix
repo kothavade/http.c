@@ -28,5 +28,6 @@ pkgs.mkShell {
     curl
     clang-tools
     cc
+    # valgrind
   ];
 }
