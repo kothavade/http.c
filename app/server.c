@@ -6,27 +6,27 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/socket.h>
+#include <pthread.h>
 #include <unistd.h>
+#include <stdbool.h>
 
 #include "request.h"
 
 const char ECHO_TARGET[] = "/echo/";
 const char USER_TARGET[] = "/user-agent";
 
+void* handleClient(void* arg);
 void ok(Request *req);
 void echo(Request *req);
-void user_agent(Request *req);
-void not_found(Request *req);
+void userAgent(Request *req);
+void notFound(Request *req);
 
 int main() {
     // Disable output buffering
     setbuf(stdout, NULL);
     setbuf(stderr, NULL);
 
-    int server_fd, client_addr_len;
-    struct sockaddr_in client_addr;
-
-    server_fd = socket(AF_INET, SOCK_STREAM, 0);
+    int server_fd = socket(AF_INET, SOCK_STREAM, 0);
     if (server_fd == -1) {
         printf("Socket creation failed: %s...\n", strerror(errno));
         return 1;
@@ -58,11 +58,29 @@ int main() {
     }
 
     printf("Waiting for a client to connect...\n");
-    client_addr_len = sizeof(client_addr);
+    while (true) {
+        struct sockaddr_in client_addr;
+        int client_addr_len = sizeof(client_addr);
 
-    int client_fd =
-        accept(server_fd, (struct sockaddr *)&client_addr, (socklen_t *)&client_addr_len);
-    printf("Client connected\n");
+        int client_fd =
+            accept(server_fd, (struct sockaddr *)&client_addr, (socklen_t *)&client_addr_len);
+        printf("Client connected\n");
+
+        pthread_t thread;
+        int *thread_fd = malloc(sizeof(int));
+        *thread_fd = client_fd;
+
+        pthread_create(&thread, NULL, handleClient, thread_fd);
+    }
+
+    close(server_fd);
+
+    return 0;
+}
+
+void* handleClient(void* arg){
+    int client_fd = *((int*)arg);
+    free(arg);
 
     char input[1024];
     read(client_fd, input, 1024);
@@ -98,15 +116,14 @@ int main() {
     } else if (strncmp(ECHO_TARGET, req.target, strlen(ECHO_TARGET)) == 0) {
         echo(&req);
     } else if (strncmp(USER_TARGET, req.target, strlen(USER_TARGET)) == 0) {
-        user_agent(&req);
+        userAgent(&req);
     } else {
-        not_found(&req);
+        notFound(&req);
     }
 
     freeRequest(&req);
-    close(server_fd);
-
-    return 0;
+    close(client_fd);
+    return NULL;
 }
 
 void ok(Request *req) {
@@ -131,11 +148,10 @@ void echo(Request *req) {
     free(echo);
 }
 
-void user_agent(Request *req) {
+void userAgent(Request *req) {
     const char USER_PREFIX[] = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: ";
     Header *h = getHeader(req, "User-Agent");
     char *body = h->body;
-    printf("user-agent: [%s]", body);
     int body_len = strlen(body);
 
     char *user_agent = malloc(
@@ -150,7 +166,7 @@ void user_agent(Request *req) {
     free(user_agent);
 }
 
-void not_found(Request *req) {
+void notFound(Request *req) {
     const char NOT_FOUND[] = "HTTP/1.1 404 Not Found\r\n\r\n";
     write(req->client_fd, NOT_FOUND, strlen(NOT_FOUND));
 }
