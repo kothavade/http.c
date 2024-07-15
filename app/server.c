@@ -12,22 +12,8 @@
 
 #include "request.h"
 
-#define MAX_PATH_SIZE 1024
-#define MAX_INPUT_SIZE 1024
 
-#define HTTP_OK "HTTP/1.1 200 OK\r\n"
-#define HTTP_CREATED "HTTP/1.1 201 Created\r\n"
-#define HTTP_NOT_FOUND "HTTP/1.1 404 Not Found\r\n"
-
-#define CONTENT_PLAIN "Content-Type: text/plain\r\n"
-#define CONTENT_OCTET "Content-Type: application/octet-stream\r\n"
-
-const char ECHO_TARGET[] = "/echo/";
-const char USER_TARGET[] = "/user-agent";
-const char FILE_TARGET[] = "/files/";
-
-const char DIR_ARG[] = "--directory";
-
+// Forward Declarations
 void *handle_client(void *arg);
 void ok(Request *req);
 void echo(Request *req);
@@ -35,6 +21,16 @@ void user_agent(Request *req);
 void file_get(Request *req, char *path);
 void file_post(Request *req, char *path);
 void not_found(Request *req);
+
+// Constants
+#define MAX_PATH_SIZE 1024
+#define MAX_INPUT_SIZE 1024
+
+const char ECHO_TARGET[] = "/echo/";
+const char USER_TARGET[] = "/user-agent";
+const char FILE_TARGET[] = "/files/";
+
+const char DIR_ARG[] = "--directory";
 
 char *dir = "./";
 
@@ -105,7 +101,7 @@ void *handle_client(void *arg) {
     char input[MAX_INPUT_SIZE];
     read(client_fd, input, MAX_INPUT_SIZE);
 
-    Request req = {.client_fd = client_fd};
+    Request req = {._client_fd = client_fd};
 
     req.body = strstr(input, "\r\n\r\n");
     *req.body = '\0';
@@ -116,7 +112,7 @@ void *handle_client(void *arg) {
 
     // Request
     char *reqlast;
-    req.method = strtok_r(section, " ", &reqlast);
+    req.method = method_from_string(strtok_r(section, " ", &reqlast));
     req.target = strtok_r(NULL, " ", &reqlast);
     req.version = strtok_r(NULL, " ", &reqlast);
 
@@ -130,7 +126,7 @@ void *handle_client(void *arg) {
         header_name = strsep(&section, ": ");
         // FIXME: why do we have to skip the space ourselves?
         header_body = ++section;
-        set_header(&req, header_name, header_body);
+        req_set_header(&req, header_name, header_body);
         section = strtok_r(NULL, "\r\n", &last);
     }
 
@@ -145,9 +141,9 @@ void *handle_client(void *arg) {
         char path[MAX_PATH_SIZE];
         strcpy(path, dir);
         strcpy(path + strlen(dir), input);
-        if (strcmp(req.method, "GET") == 0) {
+        if (req.method == GET) {
             file_get(&req, path);
-        } else if (strcmp(req.method, "POST") == 0) {
+        } else if (req.method == POST) {
             file_post(&req, path);
         } else {
             not_found(&req);
@@ -157,76 +153,71 @@ void *handle_client(void *arg) {
         not_found(&req);
     }
 
-    free_request(&req);
+    req_free(&req);
     close(client_fd);
     return NULL;
 }
 
 void ok(Request *req) {
-    const char OK[] = HTTP_OK "\r\n";
-    write(req->client_fd, OK, strlen(OK));
+    Response res = {};
+    req_write(req, &res);
 }
 
 void echo(Request *req) {
-    const char ECHO_PREFIX[] = HTTP_OK CONTENT_PLAIN "Content-Length: ";
-
-    const char *input = req->target + strlen(ECHO_TARGET);
-    int input_len = strlen(input);
-    char *echo = malloc(strlen(ECHO_PREFIX) + snprintf(NULL, 0, "%d", input_len) +
-                        strlen("\r\n\r\n") + strlen(input) + 1);
-    sprintf(echo, "%s%d\r\n\r\n%s", ECHO_PREFIX, input_len, input);
-    write(req->client_fd, echo, strlen(echo));
-    free(echo);
+    char *input = req->target + strlen(ECHO_TARGET);
+    Response res = {
+        .body = input,
+    };
+    req_write(req, &res);
 }
 
 void user_agent(Request *req) {
-    const char USER_PREFIX[] = HTTP_OK CONTENT_PLAIN "Content-Length: ";
-    Header *h = get_header(req, "User-Agent");
-    char *body = h->body;
-    int body_len = strlen(body);
-
-    char *user_agent = malloc(strlen(USER_PREFIX) + snprintf(NULL, 0, "%d", body_len) +
-                              strlen("\r\n\r\n") + strlen(body) + 1);
-    sprintf(user_agent, "%s%d\r\n\r\n%s", USER_PREFIX, body_len, body);
-    write(req->client_fd, user_agent, strlen(user_agent));
-    free(user_agent);
+    Header *h = req_get_header(req, "User-Agent");
+    if (h == NULL) {
+        not_found(req);
+        return;
+    }
+    Response res = {
+        .body = h->body,
+    };
+    req_write(req, &res);
 }
 
-void file_get(Request *req, char* path) {
-    const char FILE_PREFIX[] = HTTP_OK CONTENT_OCTET "Content-Length: ";
-
+void file_get(Request *req, char *path) {
     FILE *fp = fopen(path, "r");
     if (fp == NULL) {
         not_found(req);
         return;
     }
-
     fseek(fp, 0, SEEK_END);
     long size = ftell(fp);
     fseek(fp, 0, SEEK_SET);
 
-    char *get_file = malloc(strlen(FILE_PREFIX) + snprintf(NULL, 0, "%ld", size) +
-                            strlen("\r\n\r\n") + size + 1);
-    sprintf(get_file, "%s%ld\r\n\r\n", FILE_PREFIX, size);
-
-    fread(get_file + strlen(get_file), 1, size, fp);
+    char *body = malloc(size);
+    fread(body, 1, size, fp);
     fclose(fp);
 
-    write(req->client_fd, get_file, strlen(get_file));
-
-    free(get_file);
+    Response res = {
+        .body = body,
+        .content_type = APP_OCTET_STREAM
+    };
+    req_write(req, &res);
+    free(body);
 }
 
 void file_post(Request *req, char *path) {
-    const char FILE_RESP[] = HTTP_CREATED "\r\n";
     FILE *fp = fopen(path, "w");
-    fprintf(fp, "%s", req->body);
+    fputs(req->body, fp);
     fclose(fp);
-
-    write(req->client_fd, FILE_RESP, strlen(FILE_RESP));
+    Response res = {
+        .status = HTTP_CREATED,
+    };
+    req_write(req, &res);
 }
 
 void not_found(Request *req) {
-    const char NOT_FOUND[] = HTTP_NOT_FOUND "\r\n";
-    write(req->client_fd, NOT_FOUND, strlen(NOT_FOUND));
+    Response res = {
+        .status = HTTP_NOT_FOUND,
+    };
+    req_write(req, &res);
 }
