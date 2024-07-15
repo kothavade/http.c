@@ -1,10 +1,17 @@
 #include "request.h"
 
+#include <ctype.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
 #include "unistd.h"
+
+const char* STATUS_STR[] = {"200 OK", "201 Created", "404 Not Found"};
+
+const char* CONTENT_TYPE_STR[] = {"text/plain", "application/octet-stream"};
+
+#define eos(s) (s + strlen(s))
 
 /// Convert a string to a METHOD enum.
 METHOD method_from_string(char* str) {
@@ -61,6 +68,40 @@ void req_set_header(Request* req, char* name, char* body) {
     }
 }
 
+/// Create a request from an input buffer and a client fd.
+Request req_init(char* buf, int fd) {
+    Request req = {._fd = fd};
+
+    req.body = strstr(buf, "\r\n\r\n");
+    *req.body = '\0';
+    req.body += strlen("\r\n\r\n");
+
+    char *section, *last;
+    section = strtok_r(buf, "\r\n", &last);
+
+    // Request
+    char* reqlast;
+    req.method = method_from_string(strtok_r(section, " ", &reqlast));
+    req.target = strtok_r(NULL, " ", &reqlast);
+    req.version = strtok_r(NULL, " ", &reqlast);
+
+    // Headers
+    char *header_name, *header_body;
+    section = strtok_r(NULL, "\r\n", &last);
+
+    while (section != NULL) {
+        // Leading spaces
+        while (isspace(section[0])) section++;
+        header_name = strsep(&section, ": ");
+        // FIXME: why do we have to skip the space ourselves?
+        header_body = ++section;
+        req_set_header(&req, header_name, header_body);
+        section = strtok_r(NULL, "\r\n", &last);
+    }
+
+    return req;
+}
+
 /// Free all allocated fields in a Request.
 void req_free(Request* req) {
     Header* h = req->headers;
@@ -71,12 +112,6 @@ void req_free(Request* req) {
     }
 }
 
-const char* STATUS_STR[] = {"200 OK", "201 Created", "404 Not Found"};
-
-const char* CONTENT_TYPE_STR[] = {"text/plain", "application/octet-stream"};
-
-#define eos(s) (s + strlen(s))
-
 void req_write(Request* req, Response* res) {
     char buf[1024];
     int len;
@@ -85,11 +120,16 @@ void req_write(Request* req, Response* res) {
 
     if (res->body != NULL) {
         Header* accept_encoding = req_get_header(req, "Accept-Encoding");
-        if (accept_encoding != NULL && (strcmp(accept_encoding->body, "gzip") == 0)) {
-            strcat(buf, "Content-Encoding: gzip\r\n");
-            len = strlen(res->body);
-        } else {
-            len = strlen(res->body);
+        len = strlen(res->body);
+        if (accept_encoding != NULL) {
+            char* last;
+            for (char* encoding = strtok_r(accept_encoding->body, ", ", &last); encoding != NULL;
+                 encoding = strtok_r(NULL, ", ", &last)) {
+                if (strcmp(encoding, "gzip") == 0) {
+                    strcat(buf, "Content-Encoding: gzip\r\n");
+                    len = strlen(res->body);
+                }
+            }
         }
         sprintf(eos(buf), "Content-Type: %s\r\n", CONTENT_TYPE_STR[res->content_type]);
         sprintf(eos(buf), "Content-Length: %d\r\n\r\n", len);
@@ -98,5 +138,5 @@ void req_write(Request* req, Response* res) {
         strcat(buf, "\r\n");
     }
 
-    write(req->_client_fd, buf, strlen(buf));
+    write(req->_fd, buf, strlen(buf));
 }

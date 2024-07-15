@@ -12,7 +12,6 @@
 
 #include "request.h"
 
-
 // Forward Declarations
 void *handle_client(void *arg);
 void ok(Request *req);
@@ -101,34 +100,7 @@ void *handle_client(void *arg) {
     char input[MAX_INPUT_SIZE];
     read(client_fd, input, MAX_INPUT_SIZE);
 
-    Request req = {._client_fd = client_fd};
-
-    req.body = strstr(input, "\r\n\r\n");
-    *req.body = '\0';
-    req.body += strlen("\r\n\r\n");
-
-    char *section, *last;
-    section = strtok_r(input, "\r\n", &last);
-
-    // Request
-    char *reqlast;
-    req.method = method_from_string(strtok_r(section, " ", &reqlast));
-    req.target = strtok_r(NULL, " ", &reqlast);
-    req.version = strtok_r(NULL, " ", &reqlast);
-
-    // Headers
-    char *header_name, *header_body;
-    section = strtok_r(NULL, "\r\n", &last);
-
-    while (section != NULL) {
-        // Leading spaces
-        while (isspace(section[0])) section++;
-        header_name = strsep(&section, ": ");
-        // FIXME: why do we have to skip the space ourselves?
-        header_body = ++section;
-        req_set_header(&req, header_name, header_body);
-        section = strtok_r(NULL, "\r\n", &last);
-    }
+    Request req = req_init(input, client_fd);
 
     if (strcmp(req.target, "/") == 0) {
         ok(&req);
@@ -197,10 +169,7 @@ void file_get(Request *req, char *path) {
     fread(body, 1, size, fp);
     fclose(fp);
 
-    Response res = {
-        .body = body,
-        .content_type = APP_OCTET_STREAM
-    };
+    Response res = {.body = body, .content_type = APP_OCTET_STREAM};
     req_write(req, &res);
     free(body);
 }
