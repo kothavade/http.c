@@ -5,13 +5,14 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "compress.h"
 #include "unistd.h"
 
-const char* STATUS_STR[] = {"200 OK", "201 Created", "404 Not Found"};
-
-const char* CONTENT_TYPE_STR[] = {"text/plain", "application/octet-stream"};
-
+#define MAX_BUF_SIZE 1024
 #define eos(s) (s + strlen(s))
+
+const char* STATUS_STR[] = {"200 OK", "201 Created", "404 Not Found"};
+const char* CONTENT_TYPE_STR[] = {"text/plain", "application/octet-stream"};
 
 /// Convert a string to a METHOD enum.
 METHOD method_from_string(char* str) {
@@ -113,7 +114,7 @@ void req_free(Request* req) {
 }
 
 void req_write(Request* req, Response* res) {
-    char buf[1024];
+    char buf[MAX_BUF_SIZE];
     int len;
 
     sprintf(buf, "HTTP/1.1 %s\r\n", STATUS_STR[res->status]);
@@ -126,17 +127,19 @@ void req_write(Request* req, Response* res) {
             for (char* encoding = strtok_r(accept_encoding->body, ", ", &last); encoding != NULL;
                  encoding = strtok_r(NULL, ", ", &last)) {
                 if (strcmp(encoding, "gzip") == 0) {
+                    char compressed[MAX_BUF_SIZE];
+                    len = gzip(res->body, strlen(res->body), compressed, sizeof(compressed));
+                    res->body = compressed;
                     strcat(buf, "Content-Encoding: gzip\r\n");
-                    len = strlen(res->body);
+                    break;
                 }
             }
         }
         sprintf(eos(buf), "Content-Type: %s\r\n", CONTENT_TYPE_STR[res->content_type]);
         sprintf(eos(buf), "Content-Length: %d\r\n\r\n", len);
-        strcat(buf, res->body);
     } else {
-        strcat(buf, "\r\n");
+        res->body = "\r\n";
     }
-
     write(req->_fd, buf, strlen(buf));
+    write(req->_fd, res->body, len);
 }
