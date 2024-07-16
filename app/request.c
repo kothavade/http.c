@@ -73,10 +73,12 @@ void req_set_header(Request* req, char* name, char* body) {
 Request req_init(char* buf, int fd) {
     Request req = {._fd = fd};
 
+    // Split request/header and body
     req.body = strstr(buf, "\r\n\r\n");
     *req.body = '\0';
     req.body += strlen("\r\n\r\n");
 
+    // Split request line and headers
     char *section, *last;
     section = strtok_r(buf, "\r\n", &last);
 
@@ -139,6 +141,7 @@ void req_write(Request* req, Response* res) {
         sprintf(eos(buf), "Content-Length: %d\r\n\r\n", len);
     } else {
         res->body = "\r\n";
+        len = strlen(res->body);
     }
     write(req->_fd, buf, strlen(buf));
     write(req->_fd, res->body, len);
